@@ -14,7 +14,7 @@ if (window.TS && TS.ensureFullyBooted) {
         if (TS.model && TS.model.team && TS.model.team.name) {
             team = TS.model.team.name;
         }
-        var capitals = team.match(/[A-Z]/g);
+        var capitals = team.match(/[A-Z0-9]/g);
         var teamComponents = team.split(/\W/).filter(function(c) { return /\w/.test(c); });
         var text;
         if (/^[A-Z]/.test(team) && capitals.length > 1) {
@@ -34,11 +34,36 @@ if (window.TS && TS.ensureFullyBooted) {
         var activeColor = computeStyle("#team_name", "color", "white");
         var offlineColor = "red";
         var pixelRatio = window.devicePixelRatio || 1;
+
+        function roundRect(ctx, x, y, width, height, radius) {
+            if (typeof radius === 'number') {
+                radius = {tl: radius, tr: radius, br: radius, bl: radius};
+            } else {
+                var defaultRadius = {tl: 0, tr: 0, br: 0, bl: 0};
+                for (var side in defaultRadius) {
+                    radius[side] = radius[side] || defaultRadius[side];
+                }
+            }
+            ctx.beginPath();
+            ctx.moveTo(x + radius.tl, y);
+            ctx.lineTo(x + width - radius.tr, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+            ctx.lineTo(x + width, y + height - radius.br);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+            ctx.lineTo(x + radius.bl, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+            ctx.lineTo(x, y + radius.tl);
+            ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+            ctx.closePath();
+        }
+
         function faviconWithStyle(color, textAlpha, showBubble) {
             return function(context) {
                 // Background
                 context.fillStyle = backgroundColor;
-                context.fillRect(0, 0, 16, 16);
+                roundRect(context, 0, 0, 16, 16, 1.5);
+                context.fill();
+                //context.fillRect(0, 0, 16, 16);
                 // Text
                 context.globalAlpha = textAlpha;
                 context.fillStyle = color;
@@ -71,7 +96,7 @@ if (window.TS && TS.ensureFullyBooted) {
             "app_icon_32px_red_unreads" : faviconWithStyle(offlineColor, 1),
             "app_icon_32px_red_mentions" : faviconWithStyle(offlineColor, 1, true),
         };
-        if (TS.model && TS.model.data_urls && TS.view && TS.view.maybeChangeFavIco) {
+        if (TS.model && TS.view && TS.view.maybeChangeFavIco) {
             for (var i in variants) {
                 if (variants.hasOwnProperty(i)) {
                     var canvas = document.createElement("canvas");
@@ -80,10 +105,21 @@ if (window.TS && TS.ensureFullyBooted) {
                     var context = canvas.getContext("2d");
                     context.scale(pixelRatio, pixelRatio);
                     variants[i](context);
-                    TS.model.data_urls[i] = canvas.toDataURL();
+                    variants[i] = canvas.toDataURL();
                 }
             }
-            TS.view.maybeChangeFavIco();
+            TS.view.maybeChangeFavIco = function() {
+                if (TS.boot_data.feature_incremental_unread_counts) return;
+                var currentConnectionStatus = TS.view.ms.current_connection_status;
+                var currentUnreadStatus = TS.view.current_unread_status;
+                var name = 'online' === currentConnectionStatus ? 'app_icon_32px_green' : 'trouble' === currentConnectionStatus ? 'app_icon_32px_yellow' : 'app_icon_32px_red';
+                'unreads' === currentUnreadStatus ? name += '_unreads' : 'mentions' === currentUnreadStatus && (name += '_mentions');
+                var newDataURI = variants[name];
+                var target = document.querySelector("#favicon");
+                if (target && target.getAttribute("href") !== newDataURI) {
+                    target.setAttribute("href", newDataURI);
+                }
+            }
         }
     });
 }
